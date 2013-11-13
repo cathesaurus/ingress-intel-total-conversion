@@ -26,7 +26,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
@@ -43,6 +42,7 @@ public class IITC_WebViewClient extends WebViewClient {
 
     private String mIitcScript = null;
     private String mIitcPath = null;
+    private boolean mIitcInjected = false;
     private final Context mContext;
 
     public IITC_WebViewClient(Context c) {
@@ -142,6 +142,7 @@ public class IITC_WebViewClient extends WebViewClient {
             } else {
                 js = this.fileToString("total-conversion-build.user.js", true);
             }
+            mIitcInjected = false;
         }
 
         PackageManager pm = mContext.getPackageManager();
@@ -161,7 +162,7 @@ public class IITC_WebViewClient extends WebViewClient {
                     "window.showLayerChooser = false");
         }
 
-        String gmInfo = "GM_info=" + getGmInfoJson(getScriptInfo(js)).toString() + "\n";
+        String gmInfo = "GM_info=" + getGmInfoJson(getScriptInfo(js)) + "\n";
         this.mIitcScript = gmInfo + js;
 
     }
@@ -177,8 +178,10 @@ public class IITC_WebViewClient extends WebViewClient {
     public void onPageFinished(WebView view, String url) {
         if (url.startsWith("http://www.ingress.com/intel")
                 || url.startsWith("https://www.ingress.com/intel")) {
+            if (mIitcInjected) return;
             Log.d("iitcm", "injecting iitc..");
             view.loadUrl("javascript: " + this.mIitcScript);
+            mIitcInjected = true;
             loadPlugins(view);
         }
         super.onPageFinished(view, url);
@@ -192,6 +195,7 @@ public class IITC_WebViewClient extends WebViewClient {
         Log.d("iitcm", "Login requested: " + realm + " " + account + " " + args);
         Log.d("iitcm", "logging in...updating caching mode");
         ((IITC_WebView) view).updateCaching(true);
+        mIitcInjected = false;
         //((IITC_Mobile) mContext).onReceivedLoginRequest(this, view, realm, account, args);
     }
 
