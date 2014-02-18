@@ -13,58 +13,30 @@ offers many more features. It is available for
 
 <h3>Latest news</h3>
 
-<h4>11th November 2013</h4>
+<h4>6th February 2014</h4>
 <p>
-IITC 0.15.0 and IITC Mobile 0.9 have just been released. This update fixes things to work with the latest changes
-to the standard intel site. Also
+IITC 0.16.4 and IITC Mobile 0.10.4 have just been released. This version is required to fix a bug with showing portal details
+due to a change made by Niantic to the intel site protocol. Also, the following changes have been made:
+</p>
 <ul>
-<li>Support for Jarvis shards (and other future artifacts)</li>
-<li>New base map plugins - for <a href="http://maps.stamen.com/">maps.stamen.com/</a> and Bing maps.</li>
-</ul>
-</p>
-
-<h4>7th November 2013</h4>
-<p>
-IITC 0.14.6 and IITC Mobile 0.7.7.2 released. Another change needed to match a minor update to the standard intel site.
-</p>
-
-<h4>6th November 2013</h4>
-<p>
-IITC 0.14.5 and IITC Mobile 0.7.7.1 have been released. This contains a fix to work with the latest intel site updates.
-Other than this, it is identical to the 0.14.4/0.7.7 release.
-</p>
-
-<h4>29th October 2013</h4>
-<p>
-IITC 0.14.4 and IITC Mobile 0.7.7 have just been released. A critical update required to work with changes made to the
-standard intel site. Changes include
-<ul>
-<li>Fix to geodesic circle drawing. They were not correctly distorted, leading to incorrect link ranges drawn on the map.</li>
-<li>Bookmarks plugin: add layer and highlighter to indicate bookmarked portals</li>
-<li>Player tracker plugin: markers fade for older activity, and separate layers for each faction</li>
-<li>The 'About IITC' dialog now lists which plugins are installed. This may not work correctly for 3rd party plugins at this time</li>
-<li>Mobile:
+<li>Portal markers are now reduced in size when you zoom out, reducing clutter when viewing large areas of the map</li>
+<li>Blocked a 3rd party plugin, arc, from running - it had spyware features hidden within it
+(<a href="https://plus.google.com/105383756361375410867/posts/4b2EjP3Du42">details here</a>).</li>
+<li>Plugins
  <ul>
- <li>Custom fullscreen preferences</li>
- <li>Install to SD Card</li>
- <li>Cache move to SD card option (hence the new permissions)</li>
+ <li>add-kml: support for opening files on mobile added</li>
+ <li>regions: new plugin to draw the scoreboard regions on the map. <i>No support for showing scores - this needs Niantic to add it to the standard intel site first</i></li>
+ <li>score-cycle-times: new plugin to show the times of the scoreboard cycles</li>
+ <li>draw-tools: added basic import/export (via copy+paste), and colour choosing options (click on "DrawTools Opt" in the sidebar)</li>
+ <li>compute-ap-stats and portal-names: changed code to reduce the performance impact when a large number of portals are shown</li>
  </ul>
 </li>
-<li>... and, as always, various bugfixes and improvements.</li>
+<li>Mobile:
+ <ul>
+ <li>NFC support for sharing map view/selected portal - app permissions updated for this</li>
+ </ul>
+</li>
+<li>.. plus various minor bugfixes and improvements</li>
 </ul>
-</p>
-<p>
-<b>3RD PARTY PLUGIN AUTHORS</b>: The plugin wrapper code has been modified to pass through the additioal version
-information. While existing plugins should continue to work, I highly recommend updating the wrapper code in your
-scripts to match.
-</p>
 
-<h4>16th October 2013</h4>
-<p>
-IITC 0.14.3 and IITC MObile 0.7.4 have just been released. This is a critical update required to work with the latest
-changes Niantic have made to the standard intel site. Additionally, the draw-tools plugin now snaps points to portals
-when creating lines/polygons/markers (was actually in 0.14.2 release), a bugfix relating to IITC not realising who 
-'you' are, causing some highlighters to break, and a handful of other tweaks/bugfixes.
-</p>
-
-<a class="btn btn-small" href="?page=news">Older news</a>
+<a class="btn btn-default btn-sm" href="?page=news">Older news</a>
