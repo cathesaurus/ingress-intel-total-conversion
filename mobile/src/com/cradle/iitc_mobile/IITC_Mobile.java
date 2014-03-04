@@ -13,6 +13,8 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.Bitmap.CompressFormat;
 import android.net.Uri;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
@@ -38,15 +40,22 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.cradle.iitc_mobile.IITC_NavigationHelper.Pane;
+import com.cradle.iitc_mobile.share.ShareActivity;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Stack;
 import java.util.Vector;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class IITC_Mobile extends Activity
         implements OnSharedPreferenceChangeListener, NfcAdapter.CreateNdefMessageCallback {
@@ -61,7 +70,7 @@ public class IITC_Mobile extends Activity
     private IITC_DeviceAccountLogin mLogin;
     private final Vector<ResponseHandler> mResponseHandlers = new Vector<ResponseHandler>();
     private boolean mDesktopMode = false;
-    private boolean mAdvancedMenu = false;
+    private Set<String> mAdvancedMenu;
     private MenuItem mSearchMenuItem;
     private View mImageLoading;
     private ListView mLvDebug;
@@ -74,6 +83,7 @@ public class IITC_Mobile extends Activity
     private boolean mShowMapInDebug = false;
     private final Stack<String> mDialogStack = new Stack<String>();
     private String mPermalink = null;
+    private String mSearchTerm = null;
 
     // Used for custom back stack handling
     private final Stack<Pane> mBackStack = new Stack<IITC_NavigationHelper.Pane>();
@@ -128,7 +138,8 @@ public class IITC_Mobile extends Activity
         mDesktopMode = mSharedPrefs.getBoolean("pref_force_desktop", false);
 
         // enable/disable advance menu
-        mAdvancedMenu = mSharedPrefs.getBoolean("pref_advanced_menu", false);
+        final String[] menuDefaults = getResources().getStringArray(R.array.pref_android_menu_default);
+        mAdvancedMenu = mSharedPrefs.getStringSet("pref_android_menu", new HashSet<String>(Arrays.asList(menuDefaults)));
 
         // get fullscreen status from settings
         mIitcWebView.updateFullscreenStatus();
@@ -170,9 +181,11 @@ public class IITC_Mobile extends Activity
             mIitcWebView.updateFullscreenStatus();
             mNavigationHelper.onPrefChanged();
             return;
-        } else if (key.equals("pref_advanced_menu")) {
-            mAdvancedMenu = sharedPreferences.getBoolean("pref_advanced_menu", false);
-            mNavigationHelper.setDebugMode(mAdvancedMenu);
+        } else if (key.equals("pref_android_menu")) {
+            final String[] menuDefaults = getResources().getStringArray(R.array.pref_android_menu_default);
+            mAdvancedMenu = mSharedPrefs.getStringSet("pref_android_menu",
+                    new HashSet<String>(Arrays.asList(menuDefaults)));
+            mNavigationHelper.setDebugMode(mAdvancedMenu.contains(R.string.menu_debug));
             invalidateOptionsMenu();
             // no reload needed
             return;
@@ -195,8 +208,8 @@ public class IITC_Mobile extends Activity
         handleIntent(intent, false);
     }
 
+    // handles ingress intel url intents, search intents, geo intents and javascript file intents
     private void handleIntent(final Intent intent, final boolean onCreate) {
-        // load new iitc web view with ingress intel page
         final String action = intent.getAction();
         if (Intent.ACTION_VIEW.equals(action) || NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action)) {
             final Uri uri = intent.getData();
@@ -231,7 +244,10 @@ public class IITC_Mobile extends Activity
                 }
             }
 
-            if (uri.getPath().endsWith(".user.js") || intent.getType().contains("javascript")) {
+            // intent MIME type and uri path may be null
+            final String type = intent.getType() == null ? "" : intent.getType();
+            final String path = uri.getPath() == null ? "" : uri.getPath();
+            if (path.endsWith(".user.js") || type.contains("javascript")) {
                 final Intent prefIntent = new Intent(this, IITC_PluginPreferenceActivity.class);
                 prefIntent.setDataAndType(uri, intent.getType());
                 startActivity(prefIntent);
@@ -258,20 +274,20 @@ public class IITC_Mobile extends Activity
 
     private void handleGeoUri(final Uri uri) throws URISyntaxException {
         final String[] parts = uri.getSchemeSpecificPart().split("\\?", 2);
-        Double lat, lon;
+        Double lat = null, lon = null;
         Integer z = null;
+        String search = null;
 
         // parts[0] may contain an 'uncertainty' parameter, delimited by a semicolon
         final String[] pos = parts[0].split(";", 2)[0].split(",", 2);
-        if (pos.length != 2) throw new URISyntaxException(uri.toString(), "URI does not contain a valid position");
-
-        try {
-            lat = Double.valueOf(pos[0]);
-            lon = Double.valueOf(pos[1]);
-        } catch (final NumberFormatException e) {
-            final URISyntaxException use = new URISyntaxException(uri.toString(), "position could not be parsed");
-            use.initCause(e);
-            throw use;
+        if (pos.length == 2) {
+            try {
+                lat = Double.valueOf(pos[0]);
+                lon = Double.valueOf(pos[1]);
+            } catch (final NumberFormatException e) {
+                lat = null;
+                lon = null;
+            }
         }
 
         if (parts.length > 1) { // query string present
@@ -281,21 +297,47 @@ public class IITC_Mobile extends Activity
                     try {
                         z = Integer.valueOf(param.substring(2));
                     } catch (final NumberFormatException e) {
-                        final URISyntaxException use = new URISyntaxException(
-                                uri.toString(), "could not parse zoom level");
-                        use.initCause(e);
-                        throw use;
                     }
-                    break;
+                }
+                if (param.startsWith("q=")) {
+                    search = param.substring(2);
+                    final Pattern pattern = Pattern.compile("^(-?\\d+(\\.\\d+)?),(-?\\d+(\\.\\d+)?)\\s*\\(.+\\)");
+                    final Matcher matcher = pattern.matcher(search);
+                    if (matcher.matches()) {
+                        try {
+                            lat = Double.valueOf(matcher.group(1));
+                            lon = Double.valueOf(matcher.group(3));
+                            search = null; // if we have a position, we don't need the search term
+                        } catch (final NumberFormatException e) {
+                            lat = null;
+                            lon = null;
+                        }
+                    }
                 }
             }
         }
 
-        String url = "http://www.ingress.com/intel?ll=" + lat + "," + lon;
-        if (z != null) {
-            url += "&z=" + z;
+        if (lat != null && lon != null) {
+            String url = mIntelUrl + "?ll=" + lat + "," + lon;
+            if (z != null) {
+                url += "&z=" + z;
+            }
+            loadUrl(url);
+            return;
         }
-        loadUrl(url);
+
+        if (search != null) {
+            if (mIsLoading) {
+                mSearchTerm = search;
+                loadUrl(mIntelUrl);
+            } else {
+                switchToPane(Pane.MAP);
+                mIitcWebView.loadUrl("javascript:search('" + search + "');");
+            }
+            return;
+        }
+
+        throw new URISyntaxException(uri.toString(), "position could not be parsed");
     }
 
     @Override
@@ -437,6 +479,7 @@ public class IITC_Mobile extends Activity
     }
 
     public void switchToPane(final Pane pane) {
+        if (mDesktopMode) return;
         mIitcWebView.loadUrl("javascript: window.show('" + pane.name + "');");
     }
 
@@ -447,8 +490,7 @@ public class IITC_Mobile extends Activity
         // Get the SearchView and set the searchable configuration
         final SearchManager searchManager = (SearchManager) getSystemService(Context.SEARCH_SERVICE);
         mSearchMenuItem = menu.findItem(R.id.menu_search);
-        final SearchView searchView =
-                (SearchView) mSearchMenuItem.getActionView();
+        final SearchView searchView = (SearchView) mSearchMenuItem.getActionView();
         // Assumes current activity is the searchable activity
         searchView.setSearchableInfo(searchManager.getSearchableInfo(getComponentName()));
         searchView.setIconifiedByDefault(false); // Do not iconify the widget; expand it by default
@@ -458,8 +500,8 @@ public class IITC_Mobile extends Activity
     @Override
     public boolean onPrepareOptionsMenu(final Menu menu) {
         boolean visible = false;
-        if (mNavigationHelper != null)
-            visible = !mNavigationHelper.isDrawerOpened();
+        if (mNavigationHelper != null) visible = !mNavigationHelper.isDrawerOpened();
+        if (mIsLoading) visible = false;
 
         for (int i = 0; i < menu.size(); i++) {
             final MenuItem item = menu.getItem(i);
@@ -469,24 +511,21 @@ public class IITC_Mobile extends Activity
                     item.setVisible(true);
                     break;
 
-                case R.id.menu_clear_cookies:
-                    item.setVisible(mAdvancedMenu && visible);
-                    break;
-
                 case R.id.locate:
-                    item.setVisible(visible);
+                    item.setVisible(mAdvancedMenu.contains(item.getTitle()) && visible);
+                    item.setEnabled(!mIsLoading);
                     item.setIcon(mUserLocation.isFollowing()
                             ? R.drawable.ic_action_location_follow
                             : R.drawable.ic_action_location_found);
                     break;
 
                 case R.id.menu_debug:
-                    item.setVisible(mAdvancedMenu && visible);
+                    item.setVisible(mAdvancedMenu.contains(item.getTitle()) && visible);
                     item.setChecked(mDebugging);
                     break;
 
                 default:
-                    item.setVisible(visible);
+                    item.setVisible(mAdvancedMenu.contains(item.getTitle()) && visible);
             }
         }
 
@@ -537,6 +576,9 @@ public class IITC_Mobile extends Activity
             case R.id.menu_clear_cookies:
                 final CookieManager cm = CookieManager.getInstance();
                 cm.removeAllCookie();
+                return true;
+            case R.id.menu_send_screenshot:
+                sendScreenshot();
                 return true;
             case R.id.menu_debug:
                 mDebugging = !mDebugging;
@@ -658,10 +700,20 @@ public class IITC_Mobile extends Activity
 
     public void setLoadingState(final boolean isLoading) {
         mIsLoading = isLoading;
-
         mNavigationHelper.onLoadingStateChanged();
-
+        invalidateOptionsMenu();
         updateViews();
+
+        if (mSearchTerm != null && !isLoading) {
+            new Handler().postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    // switchToPane(Pane.MAP);
+                    mIitcWebView.loadUrl("javascript:search('" + mSearchTerm + "');");
+                    mSearchTerm = null;
+                }
+            }, 5000);
+        }
     }
 
     private void updateViews() {
@@ -797,6 +849,40 @@ public class IITC_Mobile extends Activity
 
     public void setPermalink(final String href) {
         mPermalink = href;
+    }
+
+    private void sendScreenshot() {
+        Bitmap bitmap = mIitcWebView.getDrawingCache();
+        if (bitmap == null) {
+            mIitcWebView.buildDrawingCache();
+            bitmap = mIitcWebView.getDrawingCache();
+            if (bitmap == null) {
+                Log.e("could not get bitmap!");
+                return;
+            }
+            bitmap = Bitmap.createBitmap(bitmap);
+            if (!mIitcWebView.isDrawingCacheEnabled()) mIitcWebView.destroyDrawingCache();
+        }
+        else {
+            bitmap = Bitmap.createBitmap(bitmap);
+        }
+
+        try {
+            final File cache = getExternalCacheDir();
+            final File file = File.createTempFile("IITC screenshot", ".png", cache);
+            if (!bitmap.compress(CompressFormat.PNG, 100, new FileOutputStream(file))) {
+                // quality is ignored by PNG
+                throw new IOException("Could not compress bitmap!");
+            }
+            startActivityForResult(ShareActivity.forFile(this, file, "image/png"), new ResponseHandler() {
+                @Override
+                public void onActivityResult(final int resultCode, final Intent data) {
+                    file.delete();
+                }
+            });
+        } catch (final IOException e) {
+            Log.e("Could not generate screenshot", e);
+        }
     }
 
     @Override
