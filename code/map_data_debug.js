@@ -29,6 +29,10 @@ window.RenderDebugTiles.prototype.create = function(id,bounds) {
   var l = L.rectangle(bounds,s);
   this.debugTileToRectangle[id] = l;
   this.debugTileLayer.addLayer(l);
+  if (map.hasLayer(this.debugTileLayer)) {
+    // only bring to back if we have the debug layer turned on
+    l.bringToBack();
+  }
 }
 
 window.RenderDebugTiles.prototype.setColour = function(id,bordercol,fillcol) {
@@ -68,8 +72,11 @@ window.RenderDebugTiles.prototype.setState = function(id,state) {
 
 window.RenderDebugTiles.prototype.startTimer = function(waitTime) {
   var _this = this;
-  if (!this.timer) {
-    this.timer = setTimeout ( function() { _this.timer = undefined; _this.runClearPass(); }, waitTime );
+  if (!_this.timer) {
+    // a timeout of 0 firing the actual timeout - helps things run smoother
+    _this.timer = setTimeout ( function() {
+      _this.timer = setTimeout ( function() { _this.timer = undefined; _this.runClearPass(); }, waitTime );
+    }, 0);
   }
 }
 
